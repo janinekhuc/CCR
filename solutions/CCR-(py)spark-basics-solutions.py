@@ -60,7 +60,7 @@ import pyspark.sql.types as T
 # COMMAND ----------
 
 # Creating dataframes
-data = [("Alice", 34), ("Bob", 45), ("Cathy", 29)]
+data = [("Nicola", 34), ("Stefan", 45), ("Cathy", 29)]
 columns = ["Name", "Age"]
 
 df = spark.createDataFrame(data, schema=columns)
@@ -69,7 +69,7 @@ df.show()
 # COMMAND ----------
 
 # Reading data from files
-csv_path = "/Volumes/dpmf_dev/default/landingzone/AFIS_Bron_ref/afis_ref_documenttype.csv"
+csv_path = "xxx/afis_ref_documenttype.csv"
 df_csv = spark.read.csv(csv_path, header=True, inferSchema=True, sep=";")
 df_csv.show()
 
@@ -82,6 +82,15 @@ df_csv.show()
 
 # A. Create a DataFrame with the columns names  "data_engineer_name" and "team" and "years_of_experience" and "gender" ['f', 'm', 'other']. Fill in three rows for three data engineers within de vakgroep
 # Show the DataFrame.
+data = [
+    ("Nicola", "Team A", 5, "f"),
+    ("Stefan", "Team B", 10, "m"),
+    ("Peter", "Team C", 3, "other")
+]
+columns = ["data_engineer_name", "team", "years_of_experience", "gender"]
+
+df = spark.createDataFrame(data, schema=columns)
+df.show()
 
 # COMMAND ----------
 
@@ -94,7 +103,11 @@ df_csv.show()
 # COMMAND ----------
 
 # Select columns
-df.select("Name", "Age").show()
+df.select(F.col("Age")).display()
+
+# selecting based on list of columns
+cols_to_select = ['Name', 'Age']
+df.select(*cols_to_select).display(5)
 
 # Filter rows
 df.filter(df.Age > 30).show()
@@ -106,8 +119,8 @@ df.groupBy("Name").agg(F.avg("Age")).show()
 # COMMAND ----------
 
 # Joining dataframes on a column
-data1 = [("Alice", 34), ("Bob", 45)]
-data2 = [("Alice", "F"), ("Bob", "M")]
+data1 = [("Nicola", 34), ("Stefan", 45)]
+data2 = [("Nicola", "F"), ("Stefan", "M")]
 
 df1 = spark.createDataFrame(data1, ["Name", "Age"])
 df2 = spark.createDataFrame(data2, ["Name", "Gender"])
@@ -127,10 +140,30 @@ df_joined.show()
 # Filter rows where "gender" is "f" and show dataframe
 # Sort the DataFrame by "years_of_experience" in descending order.
 
+data = [
+    ("Nicola", "Team A", 5, "f"),
+    ("Stefan", "Team B", 10, "m"),
+    ("Peter", "Team C", 3, "other")
+]
+columns = ["data_engineer_name", "team", "years_of_experience", "gender"]
+
+df = spark.createDataFrame(data, schema=columns)
+df.show()
+
 # B. Create a second DataFrame: one with columns "data_engineer_name" and "expertise"
 # Perform a left join on the "data_engineer_name" column.
 # Show the resulting DataFrame.
 
+data2 = [
+    ("Nicola", "Data Engineering"),
+    ("Stefan", "Data Science"),
+    ("Peter", "Machine Learning")
+]
+columns2 = ["data_engineer_name", "expertise"]
+
+df2 = spark.createDataFrame(data2, schema=columns2)
+df_joined = df.join(df2, on="data_engineer_name", how="left")
+df_joined.show()
 # COMMAND ----------
 
 # MAGIC %md
@@ -139,8 +172,8 @@ df_joined.show()
 
 # COMMAND ----------
 
-# Actions
-df.show()
+# showing the dataframe
+df.display()
 
 # Collect data
 data = df.collect()
@@ -162,6 +195,12 @@ df.select("Name").distinct().show()
 # Show the distinct values in the "expertise" column.
 # Calculate the average "expertise" of the DataFrame.
 
+# Show the distinct values in the "expertise" column.
+df_joined.select("expertise").distinct().show()
+
+# Calculate the average "years_of_experience" of the DataFrame.
+df_joined.agg(F.avg("years_of_experience")).show()
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -181,8 +220,40 @@ df.select("Name").distinct().show()
 # COMMAND ----------
 
 # Define transformations (lazy)
-df_filtered = df.filter(df.Age > 30)
+df_filtered = df.filter(F.col('Age') > 30)
+
+# create a new column
 df_transformed = df_filtered.withColumn("NewAge", F.col("Age") + 1)
+
+# concatenating strings into new column
+df_transformed = df_transformed.withColumn("random_concat", F.concat(df["Name"], df["Age"]))
+
+# Create a boolean flag
+# boolean flag
+df_transformed = df_transformed.withColumn("quite_experienced", F.col("experience") > 5)
+
+# if else statements
+df_transformed = (df_transformed.withColumn(
+    "experience_level",
+    F.when(df["experience"] < 3, 'lower')
+    .when((df["experience"] > 3) & (df["salary"] < 5), 'medior')
+    .otherwise('senior'))
+                  )
+
+# drop columns
+df_transformed = df_transformed.drop("quite_experienced")
+
+# renaming columns
+df_transformed.withColumnRenamed("NewAge", "new_age")
+
+# renaming given a dictionary of columns
+rename_dict = {
+  'Name':'name',
+  'Age':'age'
+}
+
+df_transformed.select([F.col(c).alias(rename_dict.get(c, c)) for c in df_transformed.columns]).display()
+
 
 # No execution happens until an action is called
 # Call an action to trigger execution
@@ -230,6 +301,36 @@ schema = T.StructType([
 df = spark.read.csv(csv_path, header=True, schema=schema, sep=";")
 df.printSchema()
 df.show()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Note on chaining
+# MAGIC
+
+# COMMAND ----------
+# all of the above could have also been written this way:
+
+rename_dict = {
+  'Name':'name',
+  'Age':'age'
+}
+
+df_filtered = (df
+               .filter(F.col('Age') > 30)
+               .withColumn("NewAge", F.col("Age") + 1)
+               .withColumn("random_concat", F.concat(df["Name"], df["Age"]))
+               .withColumn("quite_experienced", F.col("experience") > 5)
+               .withColumn(
+                    "experience_level",
+                    F.when(df["experience"] < 3, 'lower')
+                    .when((df["experience"] > 3) & (df["salary"] < 5), 'medior')
+                    .otherwise('senior'))
+               .drop("quite_experienced")
+               .withColumnRenamed("NewAge", "new_age")
+               .select([F.col(c).alias(rename_dict.get(c, c)) for c in df_transformed.columns]
+               )
+
 
 # COMMAND ----------
 
